@@ -1,0 +1,407 @@
+#!/bin/bash
+
+# [STEAM-MDC]:   Markdown to Steam Markdown Converter
+# Isaac Edmonds (Zonkeeh)  2021
+# This work is licensed under a Creative Commons Attribution-ShareAlike 4.0 International License (CC-BY-SA 4.0).
+
+# Usage Text shown when incorrect arguments given
+USAGE_TEXT="Usage: steam-mdc --input <path> [-o | --output <path>] [-r | --regex <path>] [-n | --line-number <int>] [-q | --quiet] [-w | --overwrite] [-h | --help]";
+# Help Text shown when the help command is activated
+HELP_TEXT="\n$USAGE_TEXT\n\n  -i, --input <path>\t\tSpecify the input file to perform the regex substitution over (Required)\n  -o, --output <path>\t\tSpecify the output file path, not overwriting by default (Default: <input-file>.out)\n  -r, --regex <path>\t\tSpecify the delimated regex file to perform the matches over (Optional)\n  -n, --line-number <int>\tSpecifies the end regex file line number to execute until (Optional)\n  -q, --quiet\t\t\tLaunches the program in quiet mode, leading to no console output (Optional)\n  -w, --overwrite\t\tAllows the program to write over the output file (Optional)\n  -h, --help\t\t\tOutputs the help log to the console\n\n";
+
+# Helper Function: echoq <0|1> <...args>
+# - Function which calls either echo or printf with the input specified.
+# - Only runs when not in quiet mode.
+function echoq() {
+  USE_PRINT=$1;
+  if [[ $1 == 0 ]]; then
+    [[ ! -n $QUIET ]] && echo "${@:2}";
+  else
+    [[ ! -n $QUIET ]] && printf "${@:2}";
+  fi
+}
+
+# Helper Function: on_error <description> <error> <endline>
+# - Function reports an error to the console, outputting both a descriptive text and the returned error if specified.
+# - If specified, prints the endline for the displayed table.
+# - Exits after printing to console.
+function on_error() {
+  [[ $3 ]] && echoq 0 "$3";
+  echoq 0 -e "[Error] $1\n$2" >&2;
+  exit 1;
+}
+
+# Helper Function: generate_line <character> <length>
+# - Generates a long line of the specified string up until the declared limit.
+function generate_line() {
+  str=$1;
+  for ((i=1;i<$2;i++)); do
+    str="$str$1";
+  done
+  echo "$str";
+}
+
+# Argument Checker
+# - Handles and assigns the required and optional program arguments.
+# - If a given argument is specified incorrectly, or doesn't exist will exit the program and print the usage details.
+#   -h | --help               Boolean help argument used to launch/run the help text.
+#   -w | --overwrite          Boolean argument which allows the program to overwrite the output file.
+#   -q | --quiet              Boolean argument to silence the console output for the program.
+#   -r | --regex <file>       Argument to provide a path to a deliminated regex file, which contains 3 columns.
+#   -i | --input <file>       Argument to provide a path to an input file which will be parsed and converted.
+#   -o | --ouput <file>       Argument to provide an output path where the fiel will be written.
+#   -n | --line-number <int>  Argument to provide a regex line number which the program will exit after executing.
+while (( "$#" )); do
+  case "$1" in
+    -h|--help)
+      echo $HELP_TEXT;
+      exit 0;
+      ;;
+    -w|--overwrite)
+      OVERWRITE=0;
+      shift;
+      ;;
+    -q|--quiet)
+      QUIET=0;
+      shift;
+      ;;
+    -r|--regex)
+      if [[ ! -n "$2" ]] || [[ ${2:0:1} == "-" ]]; then
+        on_error "Regex file argument ($1): parameter value is missing";
+      else
+        REGEX_FILE=$2;
+        shift 2;
+      fi
+      ;;
+    -i|--input)
+      if [[ ! -n "$2" ]] || [[ ${2:0:1} == "-" ]]; then
+        on_error "Input file argument ($1): parameter value is missing";
+      else
+        INPUT_FILE=$2;
+        shift 2;
+      fi
+      ;;
+    -o|--output)
+      if [[ ! -n "$2" ]] || [[ ${2:0:1} == "-" ]]; then
+        on_error "Ouput file argument ($1): parameter value is missing";
+      else
+        OUTPUT_FILE=$2;
+        shift 2;
+      fi
+      ;;
+    -n|--line-number)
+      if [[ ! -n "$2" ]] || [[ ${2:0:1} == "-" ]]; then
+        on_error "Line number argument ($1): parameter value is missing";
+      else
+        REGEX_LINE_LIMIT=$2;
+        shift 2;
+      fi
+      ;;
+    -*|--*=) # unsupported flags
+      on_error "Unsupported argument detected ($1)" $USAGE_TEXT;
+      ;;
+  esac
+done
+
+# Input File Checks
+# - Makes sure the input file is readable and exists.
+[[ ! -r "$INPUT_FILE" ]] && on_error "No readable input file detected: $INPUT_FILE";
+
+# Regex CSV/TSV Filetype, Deliminator & Schema Checks (If regex file specified)
+if [[ -n $REGEX_FILE ]]; then
+  # Readable File Check
+  # - Makes sure the regex file exists and is readable.
+  [[ ! -r "$REGEX_FILE" ]] && on_error "No readable regex file detected: $REGEX_FILE";
+
+  # Schema Validator
+  # - Awk code to check if the regex file matches the valid schema.
+  # - 3 seperated fields for Label, Search Regex and Replace Regex.
+  # - Ignores lines commented with '#'
+  INVALID_SCHEMA_ERROR=$(awk 'BEGIN {FS=OFS="\"(?:,|[[:space:]])\"";line=0;}{ line++; if($1 ~ /^#/){} else if(NF!=3){print "Line "line" contains "NF" fields and should only contain a total of 3 fields denoting a Label, Search regex and Replace regex.";exit 1;} else if($1=="\""){print "Label field (1st) of line "line" is empty.";exit 1;} else if($2==""){print "Search regex field (2nd) of line "line" is empty.";exit 1;}}' $REGEX_FILE);
+  [[ -n $INVALID_SCHEMA_ERROR ]] && on_error "Regex file does not match the valid schema:\t $INVALID_SCHEMA_ERROR";
+
+  # Deliminator Finder
+  # - Finds the deliminator used to seperate the fields (either a commar or space)
+  # - Assigns it to a variable for later use
+  REGEX_HEAD=$(grep '^[^#]' $REGEX_FILE | head -n 1);
+  if [[ $(echo "$REGEX_HEAD" | grep -o '\",\"' | wc -l) == 2 ]]; then
+    DELIMINATOR="\",\"";
+  elif [[ $(echo "$REGEX_HEAD" | grep -o '\"[[:space:]]\"' | wc -l) == 2 ]]; then
+    DELIMINATOR=$(echo "$REGEX_HEAD" | grep -o '\"[[:space:]]\"' | head -n 1);
+  else
+    on_error "Unknown deliminator used within the regex file: $REGEX_FILE";
+  fi
+fi
+
+# Output File Checks
+# - If no specific output path was given assigns the default.
+# - If overwrite isn't specified checks that no file exists at that output path.
+[[ ! -n "$OUTPUT_FILE" ]] && OUTPUT_FILE="$INPUT_FILE.out";
+[[ ! -n "$OVERWRITE" ]] && [[ -f "$OUTPUT_FILE" ]] && on_error "An output from this script for this file already exists as '$OUTPUT_FILE'. To overwrite please run this program with '-w'";
+
+# Regex Line Number Limit Checks
+# - Checks that the line limit is a positive int that doesn't exceed the regex file's line count.
+# - Also assigns a default value (max)
+[[ -n $REGEX_FILE ]] && REGEX_LINES=$( cat $REGEX_FILE | wc -l ) || REGEX_LINES=25;
+if [[ -n $REGEX_LINE_LIMIT ]]; then
+  ( (( $REGEX_LINE_LIMIT > $REGEX_LINES )) || (( $REGEX_LINE_LIMIT < 1 )) ) && on_error "Line number argument '$REGEX_LINE_LIMIT' must be a postive integer no larger than the regex file's line count ($REGEX_LINES)";
+else
+  REGEX_LINE_LIMIT=$REGEX_LINES;
+fi
+
+# Copy Output File
+# - Copies the input file to the output directory to be used in later parts of the program.
+[[ $OVERWRITE ]] && \cp $INPUT_FILE $OUTPUT_FILE || cp $INPUT_FILE $OUTPUT_FILE
+
+# Declare 3 Arrays to represent each column of the regex file.
+# - Label array is a traditional indexed array.
+# - Search and Replace regex arrays are declared as associative arrays linking a specific label to a value.
+declare -a LABEL_ARR;
+declare -A SEARCH_REGEX_ARR;
+declare -A REPLACE_REGEX_ARR;
+
+# Helper Function: display_table_header
+# - Generates and prints the header for the console output table.
+# - Doesn't execute if the program is in quiet mode.
+function display_table_header() {
+  [[ -n $QUIET ]] && return 0;
+  line142=$( generate_line "─" 142 );
+  line40=$( generate_line "─" 40 );
+  echoq 1 "┌%142s┬%40s┐\n" $line142 $line40;
+  echoq 1 "│%-142s│%41s│\n" "  [STEAM-MDC]:   Markdown to Steam Markdown Converter" " ©  Isaac Edmonds (Zonkeeh)  2021    ";
+  echoq 1 "├%142s┴%40s┤\n" $line142 $line40;
+  [[ -n $REGEX_FILE ]] && REGEX_DISPLAY="$REGEX_FILE" || REGEX_DISPLAY="Default";
+  echoq 1 "│%29s: %-152s│\n" "Regex File" "$REGEX_DISPLAY";
+  echoq 1 "│%29s: %-152s│\n" "Input File" "$INPUT_FILE";
+  echoq 1 "│%29s: %-152s│\n" "Output File" "$OUTPUT_FILE";
+  [[ -n $DELIMINATOR ]] && DELIM_DISPLAY="$(sed -r -E "s/\"\t\"/\"\\\t\"  (Tab)/; s/\"\s*\"/\"\\\s\"  (White Space)/" <<< $DELIMINATOR)" || DELIM_DISPLAY="N/a";
+  echoq 1 "│%29s: %-152s│\n" "Deliminator" "$DELIM_DISPLAY";
+  (( $REGEX_LINE_LIMIT != $REGEX_LINES )) && LINE_LIM="$REGEX_LINE_LIMIT" || LINE_LIM="$REGEX_LINES    (Max)";
+  echoq 1 "│%29s: %-152s│\n" "Line Execution Limit" "$LINE_LIM";
+}
+
+# Helper Function: display_table_footer
+# - Generates and prints the footer for the console output table.
+# - Doesn't execute if the program is in quiet mode.
+function display_table_footer() {
+  [[ -n $QUIET ]] && return 0;
+  line183=$( generate_line "─" 183 );
+  echoq 1 "│%13s%-170s│\n" "" "[SUCCESS]:   File outputted to '$(readlink -f "$OUTPUT_FILE")'";
+  echoq 1 "└%183s┘\n" $line183;
+}
+
+# Helper Function: clamp_string <string> <limit>
+# - Formats a string to include elipsis '...' if its length is greater than a specified amount.
+function clamp_string() {
+  string=$1;
+  clamp=$2;
+  if (( ${#string} > $clamp)); then
+    echo "${string:0:(($clamp-3))}...";
+  else
+    echo $1;
+  fi
+}
+
+# Function: setup_default_regex
+# - Adds the default regex expressions to their relevant data structures.
+# - Ignored if a custom regex file is specified.
+function setup_default_regex() {
+  [[ -n $REGEX_FILE ]] && return 0;
+  LABEL_ARR=();
+  SEARCH_REGEX_ARR=();
+  REPLACE_REGEX_ARR=();
+
+  # Helper Function: add_regex_row <label> <search> <replace>
+  # - Adds the specified label, search regex and replace regex to the various data structures.
+  # - If either the label or search regex is missing then skip.
+  function add_regex_row() {
+    ([[ ! -n $1 ]] || [[ ! -n $2 ]]) && return 0;
+    LABEL_ARR+=("$1");
+    SEARCH_REGEX_ARR["$1"]="$2";
+    REPLACE_REGEX_ARR["$1"]="$3";
+  }
+
+  add_regex_row 'STORED-URL-REF' '^\s*\[(\S+)\]:\s?<?(\S+)(?<!>).*$' '{ref:\"$2\",link:\"$1\"}';
+  add_regex_row 'URL-LINK' '(?<!!)\[(.*)\]\((.+?)(\s.*)?\)' '\[url=$2\]$1\[\/url\]';
+  add_regex_row 'URL-REF' '(?<!!)\[([^[\]|]*?)\]\[(\S+?)\]' '\[url={ref:\"$2\"}\]$1\[\/url\]';
+  add_regex_row 'IMG-LINK' '(?<!!)!{1}(?!!)\[(.*)\]\((.+?)(\s.*)?\)' '\[img\]$2\[\/img\]';
+  add_regex_row 'IMG-REF' '(?<!!)!\[([^[\]|]*?)\]\[(\S+?)\]' '\[img\]{ref:\"$2\"}\[\/img\]';
+  add_regex_row 'BOLD' '(?<![*_])[*_]{2}(.+)[*_]{2,3}(?![*_])' '\[b\]$1\[\/b\]';
+  add_regex_row 'ITALIC' '[*_]{1}(?![*_])(.+)(?<![*_])[*_]{1}' '\[i\]$1\[\/i\]';
+  add_regex_row 'STRIKETHROUGH' '(?<!~)~{2}(?!~)(.+)(?<!~)~{2}(?!~)' '\[strike\]$1\[\/strike\]';
+  add_regex_row 'UNDERLINE' '<ins>(.+)<\/ins>' '\[u\]$1\[\/u\]';
+  add_regex_row 'HEADING-ID' '^#{1,3}\s(.+)\s\{(#.+)\}\s$' '\[h1\]$1($2)\[\/h1\]\n';
+  add_regex_row 'HEADING' '^#{1,3}\s((?:\b\S+\b\s?)+)\s.*$' '\[h1\]$1\[\/h1\]\n';
+  add_regex_row 'CODE-BLOCK' '(`+)((?:\s|.)+?)\1' '\[code\]$2\[\/code\]';
+  add_regex_row 'HORIZONTAL-RULE' '^([-*_]{3,})$' '\[hr\]\[\/hr\]';
+  add_regex_row 'BLOCKQUOTE' '((?:^\s*>+\s+.+[\n\r])+)(?!>+)' '\[quote\]\n$1\n\[\/quote\]\n';
+  add_regex_row 'BLOCKQUOTE-REMOVAL' '^\s*>+\s+' '';
+  add_regex_row 'O-LIST-STRUCTURE' '(^\d+\.\s.+(?:[\r\n]^\d+\.\s.+)*)' '\[olist\]\n$1\n\[\/olist\]';
+  add_regex_row 'O-LIST-MEMBERS' '^\d+\.(\s.+)$' '\[\*\]$1';
+  add_regex_row 'U-LIST-STRUCTURE' '(^\-\s.+(?:[\r\n]^\-\s.+)*)' '\[list\]\n$1\n\[\/list\]';
+  add_regex_row 'U-LIST-MEMBERS' '^-(?:\s\[[x\s]\])?(\s.+)$' '\[\*\]$1';
+  add_regex_row 'TABLE-HEADER-CELL' '\|[^\S\n\r]*((?:[^|\n\r](?<!\s(?=\s|\|)))+)\s*(?=\|?(?:\|\s*(?:[^|\n\r])+\|?)*[\n\r](?:\|[^\S\n\r]*[-:]+\s*)+\|)' '\t\t\[th\]$1\[\/th\]\n';
+  add_regex_row 'TABLE-DASH-REMOVAL' '^\s*(?:\|\s*[-:]+\s*)+\|\s+' '';
+  add_regex_row 'TABLE-CELL' '\|[^\S\n\r]*((?:[^|\n\r](?<!\s(?=\s|\|)))+)' '\t\t\[td\]$1\[\/td\]\n';
+  add_regex_row 'TABLE-ROW-STRUCTURE' '((?:[^\S\r\n]*\[t[hd]\].*\[\/t[hd]\][\n\r]?)+)[\n\r|]?' '\t\[tr\]\n$1\t\[\/tr\]';
+  add_regex_row 'TABLE-STRUCTURE' '\s*(\[tr\](?:\s|.)*\[\/tr\])' '\n\[table\]\n\t$1\n\[\/table\]';
+  add_regex_row 'HTML-TAG-REMOVAL' '<(.+?)>((?:.|\s)*)<\/\1>' '$2';
+}
+
+# Core Function: read_regex
+#
+#
+#
+function read_regex() {
+  [[ ! -n $REGEX_FILE ]] && return 0;
+  LABEL_ARR=();
+  SEARCH_REGEX_ARR=();
+  REPLACE_REGEX_ARR=();
+  while read -r INPUT_LINE; do
+    LINE="$(sed -r -E "s/^(#*)\"(.*)\"\s*/\1\2/g" <<< $INPUT_LINE)$DELIMINATOR";
+    COLUMN=0;
+    LABEL="";
+    while [[ $LINE ]]; do
+      ((++COLUMN));
+      VALUE="${LINE%%"$DELIMINATOR"*}";
+      [[ "$COLUMN" == 1 ]] && LABEL=$VALUE && LABEL_ARR+=($LABEL);
+      [[ "$COLUMN" == 2 ]] && SEARCH_REGEX_ARR[$LABEL]=$VALUE;
+      [[ "$COLUMN" == 3 ]] && REPLACE_REGEX_ARR[$LABEL]=$VALUE;
+      LINE=${LINE#*"$DELIMINATOR"};
+    done
+  done < $REGEX_FILE
+}
+
+# Function: apply_multilevel_quote_regex
+# - Iterates through multilevel quote blocks to generate the correct topology.
+# - Only runs through the default blockquote regex.
+function apply_multilevel_quote_regex() {
+  [[ -n $REGEX_FILE ]] && return 0;
+  MAX_DEPTH=$(grep -Eo '^\s*>+' $INPUT_FILE | awk '{print length($1)}' | sort -nr | head -n 1);
+  (( $MAX_DEPTH <= 0 )) && return 0;
+  export BQ_SEARCH_REGEX=${SEARCH_REGEX_ARR["BLOCKQUOTE"]};
+  export BQ_REPLACE_REGEX=${REPLACE_REGEX_ARR["BLOCKQUOTE"]};
+  for i in $(seq 0 $(($MAX_DEPTH - 1)) ); do
+    (( $i >= 1)) && BQ_SEARCH_REGEX="\t$BQ_SEARCH_REGEX";
+    ERROR=`perl -i -p0e 'my $regex = qr/$ENV{BQ_SEARCH_REGEX}/mp; my $sub = $ENV{BQ_REPLACE_REGEX}; s/$regex/qq{"$sub"}/gee' $OUTPUT_FILE 2>&1`;
+    [[ $ERROR ]] && on_error "An error occured whilst trying to match/replace blockquotes at a depth of $i" $ERROR $END_LINE;
+  done
+  unset BQ_SEARCH_REGEX;
+  unset BQ_REPLACE_REGEX;
+}
+
+# Function: apply_regex
+# - Iterates through the regex array displaying and applying each regex in succession
+# - Ends on error or at the specified line limit.
+# - If default regex then calls the blockquote function for that regex label.
+# - Ignores regex lines starting with '#' (comments)
+function apply_regex() {
+  line7=$( generate_line "─" 7 );
+  line13=$( generate_line "─" 13 );
+  line25=$( generate_line "─" 25 );
+  line40=$( generate_line "─" 40 );
+  line94=$( generate_line "─" 94 );
+  line108=$( generate_line "─" 108 );
+  END_LINE=$( printf "└%7s┸%25s┸%108s┸%40s┘\n" $line7 $line25 $line108 $line40 );
+  echoq 1 "├%7s┰%25s┰%108s┰%40s┤\n" $line7 $line25 $line108 $line40
+  echoq 1 "│%-7s│%-25s│%-108s│%-40s│\n" "  Line" " Label" " Search Regex" " Replace Regex"
+  echoq 1 "├%7s╀%25s╀%108s╀%40s┤\n" $line7 $line25 $line108 $line40
+
+  LINE_NUMBER=0;
+  TABLE_ROW="│%7s│%-25s│%-108s│%-40s│\n";
+
+  for LABEL in "${LABEL_ARR[@]}"; do
+    ((++LINE_NUMBER));
+    export SEARCH=${SEARCH_REGEX_ARR[$LABEL]};
+    export REPLACE=${REPLACE_REGEX_ARR[$LABEL]};
+    if [[ $LABEL == \#* ]]; then
+      echoq 1 "$TABLE_ROW" "# $LINE_NUMBER " "  $( sed -r -E "s/^#*(.*)/\1/" <<< $LABEL)" "  $SEARCH" "  $REPLACE";
+    else
+      echoq 1 "$TABLE_ROW" "$LINE_NUMBER " "  $(clamp_string "$LABEL" 20)" "  $(clamp_string "$SEARCH" 104)" "  $(clamp_string "$REPLACE" 36)";
+      if [[ ! -n $REGEX_FILE ]] && [[ $LABEL == "BLOCKQUOTE" ]]; then
+        apply_multilevel_quote_regex;
+      else
+        ERROR=`perl -i -p0e 'my $regex = qr/$ENV{SEARCH}/mp; my $sub = $ENV{REPLACE}; s/$regex/qq{"$sub"}/gee' $OUTPUT_FILE 2>&1`;
+        [[ $ERROR ]] && on_error "An error occured whilst trying to perform the regex substitution for $LABEL (Line $LINE_NUMBER)" $ERROR $END_LINE;
+      fi
+    fi
+    [[ $LINE_NUMBER == $REGEX_LINE_LIMIT ]] && echoq 1 "├%7s╀%25s┸%13s┰%94s┸%40s┤\n" $line7 $line25 $line13 $line94 $line40 && break;
+    unset SEARCH;
+    unset REPLACE;
+  done
+}
+
+# Function: apply_stored_reference_regex
+# - Collects and stores markdown url references which were placed for markdown referencing.
+# - Uses {ref:"<ID>",link:"<URL>"} to identify stored reference.
+# - Uses {ref:"<ID>"} to indentify reference usages (for replacement).
+function apply_stored_reference_regex() {
+  declare -A STORED_REFS_ARR;
+  export STORED_REF_REGEX="\{\s*ref:\s*\"(\S+)\",\s*link:\s*\"(\S+)\"\s*\}";
+  REF_REGEX='\{\s*ref:\s*\"(\S+)\"\s*\}';
+  END_LINE=$(echoq 1 "└%7s┸%39s┸%135s┘\n" $line7 $line39 $line135);
+  CONTINUE_LINE=$(echoq 1 "└%7s┸%39s┸%135s┘\n" $line7 $line39 $line135);
+
+  # Helper Function: collect_stored_refs
+  # - Iterates through each line in the input file and collects the references matching the desired format.
+  # - Stores the references as an associative array, matching the ID to the given URL link.
+  function collect_stored_refs() {
+    ERROR_TEXT="An error occured whilst trying to idenify stored references"
+    while read -r LINE; do
+      MATCH=($(sed -nEr "s/$STORED_REF_REGEX/\2 \1/p" <<< $LINE )) || on_error $ERROR_TEXT;
+      (( ${#MATCH[@]} == 2 )) && STORED_REFS_ARR[${MATCH[0]}]=${MATCH[1]};
+    done < $OUTPUT_FILE
+  }
+
+  # Helper Function: display_refs
+  # - Displays each of the stored references to the console.
+  function display_refs() {
+    [[ -n $QUIET ]] && return 0;
+    line7=$( generate_line "─" 7 );
+    line39=$( generate_line "─" 39 );
+    line135=$( generate_line "─" 135 );
+    echoq 1 "│%-7s│%-39s│%-135s│\n" "   Ref" " Label" " Link";
+    echoq 1 "├%7s╀%39s╀%135s┤\n" $line7 $line39 $line135;
+
+    REF_COUNT=0;
+    for REF in "${!STORED_REFS_ARR[@]}"; do
+      ((++REF_COUNT))
+      LINK=${STORED_REFS_ARR[$REF]};
+      echoq 1 "│%7s│%-39s│%-135s│\n" "$REF_COUNT " "  $(clamp_string "$REF" 32)" "  $(clamp_string "$LINK" 128)";
+    done
+  }
+
+  # Helper Function: replace_refs
+  # - Iterates through each line in the input file and collects the references matching the desired format.
+  # - Stores the references as an associative array, matching the ID to the given URL link.
+  function replace_refs() {
+    for REF in "${!STORED_REFS_ARR[@]}"; do
+      export REF;
+      export LINK=${STORED_REFS_ARR[$REF]};
+      ERROR=`perl -i -p0e 'my $regex = qr/{\s*ref:\s*"$ENV{REF}"\s*}/m; my $sub = $ENV{LINK}; s/$regex/$sub/g' $OUTPUT_FILE 2>&1`;
+      [[ $ERROR ]] && on_error "An error occured whilst trying to replace the link reference for {ref:\"$REF\",link:\"$LINK\"}" $ERROR;
+    done
+  }
+
+  # Helper Function: remove_stored_refs
+  # - Removes the ref declaration text {ref:"<ID>",link:"<URL>"} from the output file
+  function remove_stored_refs() {
+    ERROR=`sed -i -Er "/$STORED_REF_REGEX/d" $OUTPUT_FILE 2>&1`;
+    [[ $ERROR ]] && on_error "An error occured whilst trying to remove stored references links from the output document" $ERROR;
+  }
+
+  collect_stored_refs;
+  display_refs;
+  replace_refs;
+  remove_stored_refs;
+}
+
+
+# Main Program Calls
+# - Calls the various functions in order, based on the configuration setup.
+display_table_header;
+[[ -n $REGEX_FILE ]] && read_regex || setup_default_regex;
+apply_regex;
+apply_stored_reference_regex;
+display_table_footer;
+exit 0;
