@@ -1,4 +1,5 @@
-# Steam MDC Makefile	(https://github.com/Zonkeeh/steam_mdc)
+# Steam MDC Makefile
+#		Source:	https://github.com/Zonkeeh/steam_mdc
 
 ifeq ($(PREFIX),)
 	PREFIX := /usr/local
@@ -9,8 +10,7 @@ exists :
 	git checkout --force -- steam_mdc
 
 # Install 'steam_mdc' in the specified directory
-install :
-	exists
+install : exists
 	chmod 755 steam_mdc && \
 	mkdir -v -p $(DESTDIR)$(PREFIX)/bin && \
 	cp -v steam_mdc $(DESTDIR)$(PREFIX)/bin/steam_mdc
@@ -19,7 +19,6 @@ install :
 update :
 	rm -f steam_mdc
 	git fetch --verbose --force
-	exists
 
 # Uninstall 'steam_mdc'
 uninstall :

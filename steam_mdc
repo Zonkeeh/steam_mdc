@@ -1,7 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # [STEAM-MDC]:   Markdown to Steam Markdown Converter
 # Isaac Edmonds (Zonkeeh)  2021
+# Source: https://github.com/Zonkeeh/steam_mdc
 # This work is licensed under a Creative Commons Attribution-ShareAlike 4.0 International License (CC-BY-SA 4.0).
 
 # Usage Text shown when incorrect arguments given
