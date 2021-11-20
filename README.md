@@ -2,12 +2,13 @@
 ---
 Convert **Markdown** code/files into [Steam's custom markup language](https://steamcommunity.com/comment/Recommendation/formattinghelp)  via a customised list of matched *regular expressions*.
 
+![STEAM_MDC](https://i.imgur.com/sLo3eEx.gif)
+
 ---
 ## Description
 
 ---
 ## Usage
-
 
 ---
 ## Installation
