@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 
-# [STEAM-MDC]:   Markdown to Steam Markdown Converter
+# [STEAM_MDC]:   Markdown to Steam Markup Converter
 # Isaac Edmonds (Zonkeeh)  2021
 # Source: https://github.com/Zonkeeh/steam_mdc
 # This work is licensed under a Creative Commons Attribution-ShareAlike 4.0 International License (CC-BY-SA 4.0).
 
 # Usage Text shown when incorrect arguments given
-USAGE_TEXT="Usage: steam-mdc --input <path> [-o | --output <path>] [-r | --regex <path>] [-n | --line-number <int>] [-q | --quiet] [-w | --overwrite] [-h | --help]";
+USAGE_TEXT="Usage: steam_mdc --input <path> [-o | --output <path>] [-r | --regex <path>] [-n | --line-number <int>] [-q | --quiet] [-w | --overwrite] [-h | --help]";
 # Help Text shown when the help command is activated
 HELP_TEXT="\n$USAGE_TEXT\n\n  -i, --input <path>\t\tSpecify the input file to perform the regex substitution over (Required)\n  -o, --output <path>\t\tSpecify the output file path, not overwriting by default (Default: <input-file>.out)\n  -r, --regex <path>\t\tSpecify the delimated regex file to perform the matches over (Optional)\n  -n, --line-number <int>\tSpecifies the end regex file line number to execute until (Optional)\n  -q, --quiet\t\t\tLaunches the program in quiet mode, leading to no console output (Optional)\n  -w, --overwrite\t\tAllows the program to write over the output file (Optional)\n  -h, --help\t\t\tOutputs the help log to the console\n\n";
 
@@ -52,6 +52,7 @@ function generate_line() {
 #   -i | --input <file>       Argument to provide a path to an input file which will be parsed and converted.
 #   -o | --ouput <file>       Argument to provide an output path where the fiel will be written.
 #   -n | --line-number <int>  Argument to provide a regex line number which the program will exit after executing.
+[[ $# -eq 0 ]] && on_error "Insufficient Usage" "$USAGE_TEXT";
 while (( "$#" )); do
   case "$1" in
     -h|--help)
@@ -169,7 +170,7 @@ function display_table_header() {
   line142=$( generate_line "─" 142 );
   line40=$( generate_line "─" 40 );
   echoq 1 "┌%142s┬%40s┐\n" $line142 $line40;
-  echoq 1 "│%-142s│%41s│\n" "  [STEAM-MDC]:   Markdown to Steam Markdown Converter" " ©  Isaac Edmonds (Zonkeeh)  2021    ";
+  echoq 1 "│%-142s│%41s│\n" "  [STEAM_MDC]:   Markdown to Steam Markup Converter" " ©  Isaac Edmonds (Zonkeeh)  2021    ";
   echoq 1 "├%142s┴%40s┤\n" $line142 $line40;
   [[ -n $REGEX_FILE ]] && REGEX_DISPLAY="$REGEX_FILE" || REGEX_DISPLAY="Default";
   echoq 1 "│%29s: %-152s│\n" "Regex File" "$REGEX_DISPLAY";
@@ -340,8 +341,10 @@ function apply_stored_reference_regex() {
   declare -A STORED_REFS_ARR;
   export STORED_REF_REGEX="\{\s*ref:\s*\"(\S+)\",\s*link:\s*\"(\S+)\"\s*\}";
   REF_REGEX='\{\s*ref:\s*\"(\S+)\"\s*\}';
+  line7=$( generate_line "─" 7 );
+  line39=$( generate_line "─" 39 );
+  line135=$( generate_line "─" 135 );
   END_LINE=$(echoq 1 "└%7s┸%39s┸%135s┘\n" $line7 $line39 $line135);
-  CONTINUE_LINE=$(echoq 1 "└%7s┸%39s┸%135s┘\n" $line7 $line39 $line135);
 
   # Helper Function: collect_stored_refs
   # - Iterates through each line in the input file and collects the references matching the desired format.
@@ -358,9 +361,7 @@ function apply_stored_reference_regex() {
   # - Displays each of the stored references to the console.
   function display_refs() {
     [[ -n $QUIET ]] && return 0;
-    line7=$( generate_line "─" 7 );
-    line39=$( generate_line "─" 39 );
-    line135=$( generate_line "─" 135 );
+
     echoq 1 "│%-7s│%-39s│%-135s│\n" "   Ref" " Label" " Link";
     echoq 1 "├%7s╀%39s╀%135s┤\n" $line7 $line39 $line135;
 
@@ -395,6 +396,7 @@ function apply_stored_reference_regex() {
   display_refs;
   replace_refs;
   remove_stored_refs;
+  echoq 1 "├%7s┸%39s┸%135s┤\n" $line7 $line39 $line135;
 }
 
 

@@ -1,8 +1,8 @@
 # Steam MDC Makefile
 #		Source:	https://github.com/Zonkeeh/steam_mdc
 
-ifeq ($(PREFIX),)
-	PREFIX := /usr/local
+ifeq ($(DIST),)
+	DIST := /usr/local/bin
 endif
 
 # Ensure 'steam_mdc' is in the current directory
@@ -12,8 +12,8 @@ exists :
 # Install 'steam_mdc' in the specified directory
 install : exists
 	chmod 755 steam_mdc && \
-	mkdir -v -p $(DESTDIR)$(PREFIX)/bin && \
-	cp -v steam_mdc $(DESTDIR)$(PREFIX)/bin/steam_mdc
+	mkdir -v -p $(DIST) && \
+	cp -v steam_mdc $(DIST)/steam_mdc
 
 # Update 'steam_mdc'
 update :
@@ -22,6 +22,6 @@ update :
 
 # Uninstall 'steam_mdc'
 uninstall :
-	rm -f $(DESTDIR)$(PREFIX)/bin/steam_mdc
+	rm -f $(DIST)/steam_mdc
 
 .PHONY: install update uninstall
