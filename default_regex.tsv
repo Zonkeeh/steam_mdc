@@ -1,4 +1,4 @@
-#"Label"	"Search"	"Replace"
+# Columns: Label, Search Regex, Replace Regex
 "STORED-URL-REF"	"^\s*\[(\S+)\]:\s?<?(\S+)(?<!>).*$"	"{ref:\"$2\",link:\"$1\"}"
 "URL-LINK"	"(?<!!)\[(.*)\]\((.+?)(\s.*)?\)"	"\[url=$2\]$1\[\/url\]"
 "URL-REF"	"(?<!!)\[([^[\]|]*?)\]\[(\S+?)\]"	"\[url={ref:\"$2\"}\]$1\[\/url\]"

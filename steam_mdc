@@ -8,7 +8,7 @@
 # Usage Text shown when incorrect arguments given
 USAGE_TEXT="Usage: steam_mdc --input <path> [-o | --output <path>] [-r | --regex <path>] [-n | --line-number <int>] [-q | --quiet] [-w | --overwrite] [-h | --help]";
 # Help Text shown when the help command is activated
-HELP_TEXT="\n$USAGE_TEXT\n\n  -i, --input <path>\t\tSpecify the input file to perform the regex substitution over (Required)\n  -o, --output <path>\t\tSpecify the output file path, not overwriting by default (Default: <input-file>.out)\n  -r, --regex <path>\t\tSpecify the delimated regex file to perform the matches over (Optional)\n  -n, --line-number <int>\tSpecifies the end regex file line number to execute until (Optional)\n  -q, --quiet\t\t\tLaunches the program in quiet mode, leading to no console output (Optional)\n  -w, --overwrite\t\tAllows the program to write over the output file (Optional)\n  -h, --help\t\t\tOutputs the help log to the console\n\n";
+HELP_TEXT="\n$USAGE_TEXT\n\n  -i, --input <path>\t\tSpecify the input file to perform the regex substitution over (Required)\n  -o, --output <path>\t\tSpecify the output file path, not overwriting by default (Default: <input-file>.out)\n  -r, --regex <path>\t\tSpecify the delimited regex file to perform the matches over (Optional)\n  -n, --line-number <int>\tSpecifies the end regex file line number to execute until (Optional)\n  -q, --quiet\t\t\tLaunches the program in quiet mode, leading to no console output (Optional)\n  -w, --overwrite\t\tAllows the program to write over the output file (Optional)\n  -h, --help\t\t\tOutputs the help log to the console\n\n";
 
 # Helper Function: echoq <0|1> <...args>
 # - Function which calls either echo or printf with the input specified.
@@ -56,7 +56,7 @@ function generate_line() {
 while (( "$#" )); do
   case "$1" in
     -h|--help)
-      echo $HELP_TEXT;
+      echo -e $HELP_TEXT;
       exit 0;
       ;;
     -w|--overwrite)
